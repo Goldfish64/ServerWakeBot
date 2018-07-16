@@ -26,7 +26,9 @@ using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -36,12 +38,15 @@ namespace ServerWakeBot {
         #region Constants
 
         public const string TokenFileName = "token.txt";
+        public const string UserWhitelist = "users-whitelist.json";
         public const string MacsFileName = "-macs.json";
         public const string CommandPrefix = "%";
 
         public const string BroadcastMac = "192.168.1.255"; // Replace with broadcast address for local subnet.
 
         #endregion
+
+        public static List<ulong> WhitelistedUsers;
 
         public static void Main(string[] args) => RunBot().GetAwaiter().GetResult();
 
@@ -55,6 +60,11 @@ namespace ServerWakeBot {
 
             // Read token from file.
             var token = File.ReadAllText(TokenFileName);
+
+            // Get white-listed users.
+            WhitelistedUsers = new List<ulong>();
+            if (File.Exists(UserWhitelist))
+                WhitelistedUsers = JsonConvert.DeserializeObject<List<ulong>>(File.ReadAllText(UserWhitelist));
 
             // Create Discord client.
             var client = new DiscordSocketClient();
@@ -82,12 +92,16 @@ namespace ServerWakeBot {
 
                 // Attempt to parse a command.
                 if (msg.HasStringPrefixLower(CommandPrefix, ref pos)) {
+                    // Check to see if user is in whitelist.
+                    if (!WhitelistedUsers.Contains(message.Author.Id))
+                        return;
+
+                    // Execute command.
                     var result = await commands.ExecuteAsync(new CommandContext(client, msg), msg.Content.Substring(pos));
                     if (!result.IsSuccess) {
                         // Is the command just unknown? If so, return.
                         if (result.Error == CommandError.UnknownCommand)
                             return;
-
                         await msg.Channel.SendMessageAsync($"Error: {result.ErrorReason}\n\nIf there are spaces in a parameter, make sure to surround it with quotes.");
                     }
                     return;
@@ -98,6 +112,7 @@ namespace ServerWakeBot {
             await client.LoginAsync(TokenType.Bot, token);
             await client.StartAsync();
 
+            // Wait forever.
             await Task.Delay(-1);
         }
     }
